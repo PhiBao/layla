@@ -29,12 +29,12 @@
   "commands": [
     {
       "trigger": "ask",
-      "argument": "[question]",
+      "argument": "<question...>",
       "description": "Ask Layla any question and get an AI-powered response"
     },
     {
       "trigger": "explain",
-      "argument": "[concept]",
+      "argument": "<concept...>",
       "description": "Get a detailed explanation of any concept or topic"
     },
     {

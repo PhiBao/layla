@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -19,29 +20,109 @@ import (
 
 // DiscordTeneoAgent combines Discord bot with Teneo agent functionality
 type DiscordTeneoAgent struct {
-	geminiClient *genai.Client
-	geminiModel  *genai.GenerativeModel
-	discord      *discordgo.Session
-	botUserID    string
-	systemPrompt string
+	geminiClient  *genai.Client
+	geminiModel   *genai.GenerativeModel
+	discord       *discordgo.Session
+	botUserID     string
+	systemPrompt  string
+	rateLimiter   *RateLimiter
+}
+
+// RateLimiter implements a simple rate limiter
+type RateLimiter struct {
+	mu           sync.Mutex
+	lastRequest  time.Time
+	minInterval  time.Duration
+}
+
+func NewRateLimiter(requestsPerMinute int) *RateLimiter {
+	interval := time.Minute / time.Duration(requestsPerMinute)
+	return &RateLimiter{
+		minInterval: interval,
+	}
+}
+
+func (rl *RateLimiter) Wait() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	
+	now := time.Now()
+	elapsed := now.Sub(rl.lastRequest)
+	
+	if elapsed < rl.minInterval {
+		waitTime := rl.minInterval - elapsed
+		time.Sleep(waitTime)
+	}
+	
+	rl.lastRequest = time.Now()
 }
 
 // ProcessTask implements the Teneo AgentHandler interface
 // This handles tasks from the Teneo network
 func (d *DiscordTeneoAgent) ProcessTask(ctx context.Context, task string) (string, error) {
-	log.Printf("📥 Teneo Task Received: %s", task)
-	
-	response, err := d.queryGemini(ctx, task)
-	if err != nil {
-		return "", fmt.Errorf("failed to process task: %w", err)
+	// Parse command from task
+	parts := strings.Fields(task)
+	if len(parts) == 0 {
+		return "Please provide a command. Available commands: ask, explain, help", nil
 	}
 	
-	log.Printf("📤 Teneo Response: %s", response)
-	return response, nil
+	command := strings.ToLower(parts[0])
+	var question string
+	if len(parts) > 1 {
+		question = strings.Join(parts[1:], " ")
+	}
+	
+	switch command {
+	case "ask":
+		if question == "" {
+			return "Please provide a question. Usage: ask [your question]", nil
+		}
+		geminiCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		response, err := d.queryGemini(geminiCtx, question)
+		if err != nil {
+			return "", fmt.Errorf("failed to process question: %w", err)
+		}
+		return response, nil
+		
+	case "explain":
+		if question == "" {
+			return "Please provide a concept to explain. Usage: explain [concept]", nil
+		}
+		geminiCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		response, err := d.queryGemini(geminiCtx, question)
+		if err != nil {
+			return "", fmt.Errorf("failed to explain concept: %w", err)
+		}
+		return response, nil
+		
+	case "help":
+		helpText := "🤖 Layla - AI Assistant\n\n" +
+			"Available commands:\n" +
+			"• ask [question] - Ask me anything\n" +
+			"• explain [concept] - Get detailed explanation of a concept\n" +
+			"• help - Show this help message\n\n" +
+			"Example: ask what is the meaning of life"
+		return helpText, nil
+		
+	default:
+		// If no recognized command, treat entire task as a question
+		geminiCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		response, err := d.queryGemini(geminiCtx, task)
+		if err != nil {
+			return "", fmt.Errorf("failed to process task: %w", err)
+		}
+		return response, nil
+	}
 }
 
 // queryGemini sends a query to Google Gemini and returns the response
 func (d *DiscordTeneoAgent) queryGemini(ctx context.Context, userMessage string) (string, error) {
+	// Apply rate limiting
+	d.rateLimiter.Wait()
+	
 	prompt := d.systemPrompt + "\n\nUser: " + userMessage
 	
 	resp, err := d.geminiModel.GenerateContent(ctx, genai.Text(prompt))
@@ -49,7 +130,15 @@ func (d *DiscordTeneoAgent) queryGemini(ctx context.Context, userMessage string)
 		return "", err
 	}
 
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+	if len(resp.Candidates) == 0 {
+		return "", fmt.Errorf("no response from Gemini")
+	}
+	
+	if len(resp.Candidates[0].Content.Parts) == 0 {
+		// Check if response was blocked
+		if resp.Candidates[0].FinishReason != 0 {
+			return "I apologize, but I cannot provide a response to that query due to content safety filters.", nil
+		}
 		return "", fmt.Errorf("no response from Gemini")
 	}
 
@@ -103,8 +192,6 @@ func (d *DiscordTeneoAgent) handleDiscordMessage(s *discordgo.Session, m *discor
 		return
 	}
 
-	log.Printf("💬 Discord Message from %s: %s", m.Author.Username, content)
-
 	// Show typing indicator
 	s.ChannelTyping(m.ChannelID)
 
@@ -112,7 +199,6 @@ func (d *DiscordTeneoAgent) handleDiscordMessage(s *discordgo.Session, m *discor
 	ctx := context.Background()
 	response, err := d.queryGemini(ctx, content)
 	if err != nil {
-		log.Printf("❌ Error processing message: %v", err)
 		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("❌ Sorry, I encountered an error: %v", err))
 		return
 	}
@@ -126,8 +212,6 @@ func (d *DiscordTeneoAgent) handleDiscordMessage(s *discordgo.Session, m *discor
 	} else {
 		s.ChannelMessageSend(m.ChannelID, response)
 	}
-
-	log.Printf("✅ Response sent to Discord")
 }
 
 // splitMessage splits a long message into chunks
@@ -190,10 +274,29 @@ func main() {
 	}
 	defer geminiClient.Close()
 
-	// Create Gemini model
+	// Create Gemini model - gemini-2.5-flash works fine
 	geminiModel := geminiClient.GenerativeModel("gemini-2.5-flash")
 	geminiModel.SetTemperature(0.7)
 	geminiModel.SetMaxOutputTokens(1000)
+	// Set safety settings to allow more content
+	geminiModel.SafetySettings = []*genai.SafetySetting{
+		{
+			Category:  genai.HarmCategoryHarassment,
+			Threshold: genai.HarmBlockMediumAndAbove,
+		},
+		{
+			Category:  genai.HarmCategoryHateSpeech,
+			Threshold: genai.HarmBlockMediumAndAbove,
+		},
+		{
+			Category:  genai.HarmCategoryDangerousContent,
+			Threshold: genai.HarmBlockMediumAndAbove,
+		},
+		{
+			Category:  genai.HarmCategorySexuallyExplicit,
+			Threshold: genai.HarmBlockMediumAndAbove,
+		},
+	}
 
 	// Create Discord session
 	discord, err := discordgo.New("Bot " + os.Getenv("DISCORD_TOKEN"))
@@ -213,12 +316,16 @@ func main() {
 		systemPrompt = "You are Layla, a helpful AI assistant in a Discord server. Be friendly, concise, and helpful. Answer questions accurately and engage naturally with users."
 	}
 
+	// Create rate limiter for Gemini API (8 requests per minute - well within the 10 RPM limit)
+	rateLimiter := NewRateLimiter(8)
+
 	agentHandler := &DiscordTeneoAgent{
 		geminiClient: geminiClient,
 		geminiModel:  geminiModel,
 		discord:      discord,
 		botUserID:    user.ID,
 		systemPrompt: systemPrompt,
+		rateLimiter:  rateLimiter,
 	}
 
 	// Configure Teneo Agent using default config
@@ -233,6 +340,7 @@ func main() {
 	var tokenID uint64
 	if nftID := os.Getenv("NFT_TOKEN_ID"); nftID != "" {
 		fmt.Sscanf(nftID, "%d", &tokenID)
+		agentConfig.NFTTokenID = nftID  // Also set NFTTokenID string in Config
 	}
 
 	// Create Enhanced Teneo agent (needed for chatroom connectivity)
