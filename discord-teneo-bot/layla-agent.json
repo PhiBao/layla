@@ -1,0 +1,72 @@
+{
+  "name": "Layla",
+  "agentId": "layla-discord-ai",
+  "description": "AI-powered Discord assistant connected to Teneo network. Layla provides intelligent responses using GPT-4, answering questions, explaining concepts, and engaging naturally with users across Discord servers and the Teneo agent network.",
+  "image": "",
+  "agentType": "nlp",
+  "capabilities": [
+    {
+      "name": "discord_chat",
+      "description": "Responds to Discord mentions and commands with AI-generated responses"
+    },
+    {
+      "name": "question_answering",
+      "description": "Answers questions on various topics using GPT-4 knowledge base"
+    },
+    {
+      "name": "concept_explanation",
+      "description": "Explains complex concepts in simple, understandable terms"
+    },
+    {
+      "name": "conversation",
+      "description": "Engages in natural, context-aware conversations with users"
+    },
+    {
+      "name": "teneo_network",
+      "description": "Accessible through Teneo agent network for task processing"
+    }
+  ],
+  "commands": [
+    {
+      "trigger": "ask",
+      "argument": "[question]",
+      "description": "Ask Layla any question and get an AI-powered response"
+    },
+    {
+      "trigger": "explain",
+      "argument": "[concept]",
+      "description": "Get a detailed explanation of any concept or topic"
+    },
+    {
+      "trigger": "help",
+      "argument": "",
+      "description": "Show available commands and usage instructions"
+    }
+  ],
+  "nlpFallback": true,
+  "metadata": {
+    "version": "1.0.0",
+    "created": "2025-11-09",
+    "platform": "Discord + Teneo Network",
+    "ai_model": "GPT-4 Turbo",
+    "response_types": [
+      "text",
+      "explanations",
+      "conversations",
+      "answers"
+    ],
+    "interaction_methods": [
+      "@mention",
+      "!ask command",
+      "teneo network tasks"
+    ],
+    "features": [
+      "AI-powered responses",
+      "Natural language understanding",
+      "Context-aware conversations",
+      "Automatic message splitting for long responses",
+      "Dual connectivity (Discord + Teneo)",
+      "Customizable personality via system prompt"
+    ]
+  }
+}
