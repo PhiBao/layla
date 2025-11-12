@@ -1,11 +1,11 @@
 # Discord-Teneo AI Assistant Bot
 
-A Discord bot powered by OpenAI that connects to the Teneo Agent Network. This bot responds to mentions and commands in your Discord server while also being accessible through the Teneo network.
+A Discord bot powered by Google Gemini that connects to the Teneo Agent Network. This bot responds to mentions and commands in your Discord server while also being accessible through the Teneo network.
 
 ## Features
 
 ✅ **Dual Connectivity**: Works in Discord AND on Teneo network  
-✅ **AI-Powered**: Uses OpenAI GPT-4 for intelligent responses  
+✅ **AI-Powered**: Uses Google Gemini 2.5 Flash for intelligent responses  
 ✅ **Flexible Interaction**: Responds to @mentions or `!ask` commands  
 ✅ **Message Splitting**: Automatically handles long responses  
 ✅ **Teneo Integration**: Full agent capabilities with NFT identity  
@@ -15,7 +15,7 @@ A Discord bot powered by OpenAI that connects to the Teneo Agent Network. This b
 
 1. **Go 1.24+** installed
 2. **Discord Bot Token** - [Create a Discord Application](https://discord.com/developers/applications)
-3. **OpenAI API Key** - [Get from OpenAI](https://platform.openai.com/api-keys)
+3. **Google Gemini API Key** - [Get from Google AI Studio](https://aistudio.google.com/app/apikey)
 4. **Ethereum Wallet** - Private key for Teneo network authentication
 5. **Teneo Agent NFT** - Mint via [deploy.teneo-protocol.ai](https://deploy.teneo-protocol.ai)
 
@@ -67,8 +67,8 @@ Edit `.env` file with your actual values:
 # Discord Bot Token (from Discord Developer Portal)
 DISCORD_TOKEN=your_discord_bot_token_here
 
-# OpenAI API Key
-OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxx
+# Google Gemini API Key (from Google AI Studio)
+GEMINI_API_KEY=your_gemini_api_key_here
 
 # Teneo Agent Configuration
 PRIVATE_KEY=your_ethereum_private_key_without_0x
@@ -141,7 +141,10 @@ The bot responds to two interaction methods:
 
 ### On Teneo Network
 
-Your bot is also accessible as a Teneo agent! Other agents on the network can send tasks to it, and it will process them through the same OpenAI logic.
+Your bot is also accessible as a Teneo agent! Other agents on the network can send tasks to it using commands:
+- `ask [question]` - Ask any question
+- `explain [concept]` - Get detailed explanations
+- `help` - Show available commands
 
 ## Bot Output
 
@@ -168,30 +171,31 @@ When processing messages:
 
 ### Change AI Model
 
-Edit `main.go` line 47:
+Edit `main.go` around line 289:
 ```go
-Model: openai.GPT4TurboPreview,  // Change to GPT4o, GPT35Turbo, etc.
+geminiModel := geminiClient.GenerativeModel("gemini-2.5-flash")
+// Other options: "gemini-1.5-pro", "gemini-2.0-flash-exp"
 ```
 
 ### Adjust Response Length
 
-Edit `main.go` line 49:
+Edit `main.go` around line 291:
 ```go
-MaxTokens: 1000,  // Increase for longer responses
+geminiModel.SetMaxOutputTokens(1000)  // Increase for longer responses
 ```
 
 ### Modify System Prompt
 
 Either edit `.env`:
 ```bash
-SYSTEM_PROMPT=You are a sarcastic AI assistant who loves memes...
+SYSTEM_PROMPT=You are a helpful AI assistant who specializes in blockchain...
 ```
 
-Or edit `main.go` directly (around line 186).
+Or edit `main.go` directly around line 340.
 
 ### Change Command Prefix
 
-Edit `main.go` line 119 to change from `!ask` to something else:
+Edit `main.go` to change from `!ask` to something else:
 ```go
 if !mentioned && !strings.HasPrefix(m.Content, "!mycommand") {
 ```
@@ -211,11 +215,12 @@ Ensure `.env` file exists and all required variables are filled:
 cat .env
 ```
 
-### OpenAI API errors
+### Gemini API errors
 
-- Verify API key is correct
-- Check you have credits/quota remaining
-- Ensure API key has proper permissions
+- Verify API key is correct from [Google AI Studio](https://aistudio.google.com/app/apikey)
+- Check your usage quota at [Google AI Studio](https://aistudio.google.com/)
+- Free tier has rate limits: 10 requests per minute for gemini-2.5-flash
+- For production use, consider upgrading to a paid plan
 
 ### Teneo connection issues
 
@@ -244,9 +249,46 @@ discord-teneo-bot/
 ## Dependencies
 
 - `github.com/bwmarrin/discordgo` - Discord API wrapper
-- `github.com/sashabaranov/go-openai` - OpenAI API client
+- `github.com/google/generative-ai-go` - Google Gemini API client
 - `github.com/joho/godotenv` - Environment variable loader
 - `github.com/TeneoProtocolAI/teneo-agent-sdk` - Teneo agent framework
+
+## About the Teneo Agent SDK
+
+This project depends on the `teneo-agent-sdk`, which has been added as a git submodule. The SDK is located at `/teneo-agent-sdk` in this repository.
+
+### Cloning this repository
+
+When cloning this repository, make sure to initialize the submodules:
+
+```bash
+git clone https://github.com/PhiBao/layla.git
+cd layla
+git submodule update --init --recursive
+```
+
+### Working with the SDK
+
+The SDK is included via git submodule, which keeps it synchronized with the upstream repository. To update the SDK to the latest version:
+
+```bash
+cd teneo-agent-sdk
+git pull origin main
+cd ..
+git add teneo-agent-sdk
+git commit -m "Update teneo-agent-sdk submodule"
+```
+
+### Local Development
+
+For local development, the `go.mod` file uses a replace directive to point to the local SDK:
+
+```go
+// inside discord-teneo-bot/go.mod
+replace github.com/TeneoProtocolAI/teneo-agent-sdk => ../teneo-agent-sdk
+```
+
+This allows you to make changes to both projects simultaneously. For production builds or CI, ensure the submodule is initialized.
 
 ## Security Notes
 
@@ -281,9 +323,9 @@ The same bot can work in multiple Discord servers simultaneously!
 
 ## Support
 
-- **Teneo SDK Docs**: `/home/kiter/layla/teneo-agent-sdk/README.md`
-- **Discord.js Docs**: https://discord.com/developers/docs
-- **OpenAI Docs**: https://platform.openai.com/docs
+- **Teneo SDK Docs**: [teneo-agent-sdk/README.md](../teneo-agent-sdk/README.md)
+- **Discord Developer Docs**: https://discord.com/developers/docs
+- **Google Gemini Docs**: https://ai.google.dev/gemini-api/docs
 
 ## License
 

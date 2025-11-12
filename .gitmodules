@@ -1,0 +1,3 @@
+[submodule "teneo-agent-sdk"]
+	path = teneo-agent-sdk
+	url = https://github.com/TeneoProtocolAI/teneo-agent-sdk.git
